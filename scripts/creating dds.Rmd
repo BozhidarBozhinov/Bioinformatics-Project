@@ -1,0 +1,12 @@
+#title
+тук описжам какво пра...
+#zarejdane na biblioteki
+```{r}
+library ("DESeq2")
+```
+#zarejdane na failove
+tik obqnqvam kakvi failove mi trqbvat
+```{r}
+rio::import(...)
+```
+
