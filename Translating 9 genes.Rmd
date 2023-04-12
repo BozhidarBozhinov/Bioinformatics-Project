@@ -4,9 +4,9 @@ author: "bozhidar"
 date: "2023-01-08"
 output: html_document
 ---
-### loading libraries
-### loading libraries
+ loading libraries
 
+```{r}
 BiocManager::install("tximport")
 BiocManager::install("readr")
 BiocManager::install("tximportData")
@@ -21,76 +21,124 @@ library("tximportData")
 library("airway")
 library("tidyverse")
 library("dplyr")
-###importing data
+```
+importing data
 
-GSE <- readRDS("D:GSE161860_txi.RDS")
 
-### preparing counts data
+```{r}
+txi <- readRDS("D:GSE161860_txi.RDS")
+```
 
-``` merging the data from  GSE161860 with SraRunTable and chosing the part we need``
+ preparing counts data
 
-counts_data <- GSE[["counts"]]
+ merging the data from  GSE161860 with SraRunTable and chosing the part we need``
+
+
+```{r}
+counts_data <- txi[["counts"]]
 coldata <-read.csv("D:SraRunTable.txt")
 coldata <- coldata[, c("Run", "Treatment")]
+```
 
-### making sure that row names in coldata matches to column names in counts_data
+making sure that row names in coldata matches to column names in counts_data
 
+
+```{r}
 all(colnames(counts_data) %in% coldata$Run)
+```
 
-### making sure they are in the same order
+ making sure they are in the same order
 
+
+```{r}
 coldata <- coldata[order(coldata$Run),]
 all(colnames(counts_data) == coldata$Run)
+```
 
-### rename column name
+rename column name
 
+
+```{r}
 coldata <-coldata %>%
   rename_at("Run", ~ "Sample name")
+```
 
-### construct a DESeqDataSet object
+ construct a DESeqDataSet object
+```{r}
 
-dds <- DESeqDataSetFromMatrix(countData = round(counts_data),
-                              colData = coldata,
-                              design = ~ Treatment)
+
+txi$counts <- txi$counts[,coldata$`Sample name`]
+txi$abundance <- txi$abundance[,coldata$`Sample name`]
+txi$length <- txi$length[,coldata$`Sample name`]
+ddsTxi <- DESeqDataSetFromTximport(txi,
+                                   colData = coldata, 
+                                   design = ~ Treatment)
+```
+
+
+
 
 ### removing rows with low gene counts and keeping rows that have at least 10 reads total
 
 `` helps reduce the size of the object which increases the computational speed``
 
-keep <- rowSums(counts(dds)) >= 10
-dds <- dds[keep, ]
 
-### running DESeq
+```{r}
+keep <- rowSums(counts(ddsTxi)) >= 10
+ddsTxi <- ddsTxi[keep, ]
+```
 
-`` if needed collapsing the technical replicates``
+ running DESeq
+ 
+if needed collapsing the technical replicates``
 
-dds <- DESeq(dds)
 
-``saving the results``
+```{r}
+ddsTxi <- DESeq(ddsTxi)
+```
 
-results_dds <- results(dds)
-results_dds
+saving the results``
 
-### Exploring results
 
-summary(results_dds)
+```{r}
+results_ddsTxi <- results(ddsTxi)
+results_ddsTxi
+```
 
-###contrasts
+ Exploring results
 
-resultsNames(dds)
 
-### MA plot
+```{r}
+summary(results_ddsTxi)
+```
 
-plotMA(results_dds)
+contrasts
 
-### ordering results
 
-`` ordering the results to see the 10 genes with the most significant p value``
+```{r}
+resultsNames(ddsTxi)
+```
 
-resOrdered <- results_dds[order(results_dds$pvalue),]
+ MA plot
+
+
+```{r}
+plotMA(results_ddsTxi)
+```
+
+ordering results
+
+ordering the results to see the 10 genes with the most significant p value``
+
+
+```{r}
+resOrdered <- results_ddsTxi[order(results_ddsTxi$pvalue),]
 head(resOrdered,n=10)
+```
 
-###reqired libraries
+reqired libraries
+
+```{r}
 BiocManager::install("biomaRt")
 BiocManager::install("annotables")
 BiocManager::install("org.Hs.eg.db")
@@ -100,42 +148,67 @@ library("annotables")
 library("org.Hs.eg.db")
 library("EnsDb.Hsapiens.v86")
 library("tidyverse")
+```
 
-###input list of Enselbl IDs
-ensembl.ids <- read.delim("D:Ensembl IDs.txt", header = F)
+input list of Enselbl IDs
 
-### translating with biomart
+```{r}
+ensembl.ids <- read.delim("D:Ensembl IDss.txt", header = F)
+```
 
-`` seeing the available databeses and their values``
+ translating with biomart
 
+seeing the available databeses and their values``
+
+
+```{r}
 listEnsembl()
+```
 
-`` choosing the database``
+choosing the database``
 
+
+```{r}
 ensembl <- useEnsembl(biomart = "genes")
+```
 
-``seeing which dataset to use``
+seeing which dataset to use``
 
+
+```{r}
 datasets <- listDatasets(ensembl)
+```
 
-``connecting the dataset and databese we want to use``
+connecting the dataset and databese we want to use``
 
+
+```{r}
 ensembl.conection <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+```
 
-``seeing which attributes we need``
-
+seeing which attributes we need``
+```{r}
 attributes <- listAttributes(ensembl.conection)
+```
 
-``seeing which filter we need``
 
+
+seeing which filter we need``
+
+
+```{r}
 filters <- listFilters(ensembl.conection)
+```
 
-``buildung the query``
+buildung the query``
 
+
+
+```{r}
 getBM(attributes = c("ensembl_gene_id","external_gene_name"),
-      filters = "ensembl_gene_id ",
+      filters = "ensembl_gene_id",
       values = ensembl.ids$V1,
       mart = ensembl.conection)
+```
 
 
-```proba 1234
