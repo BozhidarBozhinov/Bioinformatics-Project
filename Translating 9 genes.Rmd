@@ -211,4 +211,10 @@ getBM(attributes = c("ensembl_gene_id","external_gene_name"),
       mart = ensembl.conection)
 ```
 
+###GSVA
+
+```{r}
+BiocManager::install("GSVA")
+library("GSVA")
+```
 
