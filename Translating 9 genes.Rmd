@@ -216,5 +216,24 @@ getBM(attributes = c("ensembl_gene_id","external_gene_name"),
 ```{r}
 BiocManager::install("GSVA")
 library("GSVA")
+
+```
+loading of gene sets from GMT file
+```{r}
+gene_sets <- read.delim("D:h.all.v2023.1.Hs.symbols.gmt",
+sep = "\t", header = FALSE, stringsAsFactors = FALSE)
+```
+
+
+```{r}
+BiocManager::install("shinydashboard")
+BiocManager::install("shinyjs")
+BiocManager::install("limma")
+library("shinydasboard")
+```
+
+
+```{r}
+res <- igsva()
 ```
 
