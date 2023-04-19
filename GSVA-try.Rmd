@@ -1,0 +1,45 @@
+
+###GSVA
+
+```{r}
+
+ if (!require(GSVA)) BiocManager::install("GSVA")
+ if (!require(rio)) install.packages('rio')
+ if (!require(here)) install.packages('here')
+library("GSVA")
+library("rio")
+library("here")
+
+```
+loading of gene sets from GMT file
+```{r}
+gene_sets <- read.delim(here::here("datasmall","h.all.v2023.1.Hs.symbols.gmt"),
+sep = "\t", header = FALSE, stringsAsFactors = FALSE)
+class(gene_sets)
+
+data(c2BroadSets)
+class(c2BroadSets)
+#Функцията gsva по-долу работи, когато се подаде c2BroadSets, така че gene_sets трябва да се преработи в подобен формат
+gene_sets<-as.list(gene_sets)
+```
+
+
+```{r}
+if (!require(shinydashboard)) BiocManager::install("shinydashboard")
+if (!require(shinyjs)) BiocManager::install("shinyjs")
+if (!require(limma)) BiocManager::install("limma")
+library("shinydashboard")
+library("shinyjs")
+library("limma")
+```
+
+
+```{r}
+if (!require(GSVAdata)) BiocManager::install("GSVAdata")
+data(leukemia)
+
+class(leukemia_eset)
+leukemia_es <- gsva(exprs(leukemia_eset), gene_sets,
+            min.sz=10, max.sz=500, verbose=TRUE)$es.obs
+```
+
