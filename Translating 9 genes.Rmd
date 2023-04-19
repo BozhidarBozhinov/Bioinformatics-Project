@@ -229,11 +229,15 @@ sep = "\t", header = FALSE, stringsAsFactors = FALSE)
 BiocManager::install("shinydashboard")
 BiocManager::install("shinyjs")
 BiocManager::install("limma")
-library("shinydasboard")
+library("shinydashboard")
+library("shinyjs")
+library("limma")
 ```
 
 
 ```{r}
-res <- igsva()
+
+cache(leukemia_es <- gsva(counts_data, gene_sets,
+            min.sz=10, max.sz=500, verbose=TRUE)$es.obs)
 ```
 
