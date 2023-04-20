@@ -2,25 +2,73 @@
 ###GSVA
 
 ```{r}
-
+rm(list=ls())
  if (!require(GSVA)) BiocManager::install("GSVA")
  if (!require(rio)) install.packages('rio')
  if (!require(here)) install.packages('here')
-library("GSVA")
-library("rio")
-library("here")
-
+ if (!require(stringr)) install.packages('stringr')
+library(GSVA)
+library(rio)
+library(here)
+library(stringr)
+library(org.Hs.eg.db)
 ```
-loading of gene sets from GMT file
+loading gene sets from GMT file and package (for example comparison)
 ```{r}
-gene_sets <- read.delim(here::here("datasmall","h.all.v2023.1.Hs.symbols.gmt"),
-sep = "\t", header = FALSE, stringsAsFactors = FALSE)
-class(gene_sets)
+#Take a look at the format of an example set
+library(GSEABase)
+library(GSVAdata)
+library(purrr)
 
 data(c2BroadSets)
 class(c2BroadSets)
-#Функцията gsva по-долу работи, когато се подаде c2BroadSets, така че gene_sets трябва да се преработи в подобен формат
-gene_sets<-as.list(gene_sets)
+#Load a gene set we have
+gene_sets <- read.delim(here::here("datasmall","h.all.v2023.1.Hs.symbols.gmt"),
+sep = "\t", header = FALSE, stringsAsFactors = FALSE)
+#Somehow, the format of this gene set seems to require a lot of cleaning
+class(gene_sets)
+```
+
+Transforming gene set
+```{r}
+#Transforming gene set rownames
+gene_sets$V1<-str_replace(gene_sets$V1,"HALLMARK_","")
+rownames(gene_sets)<-gene_sets$V1
+#Removing metadata to make analysis easier and straightforward
+gene_sets<-gene_sets[,-1:-2]
+# Making a list with the desired dimensions. Transposing x and y transforms to matrix
+gene_sets<-as.list(as.data.frame(t(gene_sets))) 
+#However, the format of gene identifiers should also be changed from symbol to enrezID
+hs <- org.Hs.eg.db
+gene_sets<-sapply(gene_sets, function(a) select(hs, keys = a,
+       columns = c("ENTREZID", "SYMBOL"),
+       keytype = "SYMBOL"))
+# Manipulation of the resulting list to make it look as desired
+gene_sets<-t(gene_sets)
+gene_sets<-split(gene_sets, rownames(gene_sets))
+gene_sets<-purrr::transpose(gene_sets)
+names(gene_sets)<-c("Symbol", "geneIds")
+```
+
+Loading expression set data and necessary transformations
+```{r}
+#Loading an expression set
+if (!require(GSVAdata)) BiocManager::install("GSVAdata")
+library(GSVAdata)
+data(leukemia)
+# Exploring the loaded data
+class(leukemia_eset)
+# Extracting the expression matrix as I had difficulty renaming the row/feature/gene names
+expr.matr<-leukemia_eset@assayData[["exprs"]]
+rownames(expr.matr)<-str_replace_all(rownames(expr.matr),"[^0-9.-]","")
+# Observing the result
+head(rownames(expr.matr))
+```
+
+Performing the GSVA with the obtained objects
+```{r}
+leukemia_es <- gsva(expr.matr, gene_sets[["geneIds"]],
+            min.sz=10, max.sz=500, verbose=TRUE)
 ```
 
 
@@ -32,14 +80,3 @@ library("shinydashboard")
 library("shinyjs")
 library("limma")
 ```
-
-
-```{r}
-if (!require(GSVAdata)) BiocManager::install("GSVAdata")
-data(leukemia)
-
-class(leukemia_eset)
-leukemia_es <- gsva(exprs(leukemia_eset), gene_sets,
-            min.sz=10, max.sz=500, verbose=TRUE)$es.obs
-```
-
