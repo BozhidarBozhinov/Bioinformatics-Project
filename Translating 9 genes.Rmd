@@ -144,7 +144,6 @@ BiocManager::install("annotables")
 BiocManager::install("org.Hs.eg.db")
 BiocManager::install("EnsDb.Hsapiens.v86")
 library("biomaRt")
-library("annotables")
 library("org.Hs.eg.db")
 library("EnsDb.Hsapiens.v86")
 library("tidyverse")
@@ -213,16 +212,6 @@ getBM(attributes = c("ensembl_gene_id","external_gene_name"),
 
 ###GSVA
 
-```{r}
-BiocManager::install("GSVA")
-library("GSVA")
-
-```
-loading of gene sets from GMT file
-```{r}
-gene_sets <- read.delim("D:h.all.v2023.1.Hs.symbols.gmt",
-sep = "\t", header = FALSE, stringsAsFactors = FALSE)
-```
 
 
 ```{r}
@@ -236,8 +225,82 @@ library("limma")
 
 
 ```{r}
+rm(list=ls())
+ if (!require(GSVA)) BiocManager::install("GSVA")
+ if (!require(rio)) install.packages('rio')
+ if (!require(here)) install.packages('here')
+ if (!require(stringr)) install.packages('stringr')
+ if (!require(GSVAdata)) install.packages('GSVAdata')
+library(GSVA)
+library(rio)
+library(here)
+library(stringr)
+library(org.Hs.eg.db)
+```
+loading gene sets from GMT file and package (for example comparison)
+```{r}
+#Take a look at the format of an example set
+library(GSEABase)
+library(GSVAdata)
+library(purrr)
+data(c2BroadSets)
+class(c2BroadSets)
+#Load a gene set we have
+gene_sets <- read.delim(here::here("datasmall","h.all.v2023.1.Hs.symbols.gmt"),
+sep = "\t", header = FALSE, stringsAsFactors = FALSE)
+#Somehow, the format of this gene set seems to require a lot of cleaning
+class(gene_sets)
+```
 
-cache(leukemia_es <- gsva(counts_data, gene_sets,
-            min.sz=10, max.sz=500, verbose=TRUE)$es.obs)
+Transforming gene set
+```{r}
+#Transforming gene set rownames
+gene_sets$V1<-str_replace(gene_sets$V1,"HALLMARK_","")
+rownames(gene_sets)<-gene_sets$V1
+#Removing metadata to make analysis easier and straightforward
+gene_sets<-gene_sets[,-1:-2]
+# Making a list with the desired dimensions. Transposing x and y transforms to matrix
+gene_sets<-as.list(as.data.frame(t(gene_sets))) 
+#However, the format of gene identifiers should also be changed from symbol to enrezID
+hs <- org.Hs.eg.db
+gene_sets<-sapply(gene_sets, function(a) select(hs, keys = a,
+       columns = c("ENTREZID", "SYMBOL"),
+       keytype = "SYMBOL"))
+# Manipulation of the resulting list to make it look as desired
+gene_sets<-t(gene_sets)
+gene_sets<-split(gene_sets, rownames(gene_sets))
+gene_sets<-purrr::transpose(gene_sets)
+names(gene_sets)<-c("Symbol", "geneIds")
+```
+
+Loading expression set data and necessary transformations
+```{r}
+#Loading an expression set
+if (!require(GSVAdata)) BiocManager::install("GSVAdata")
+library(GSVAdata)
+data(leukemia)
+# Exploring the loaded data
+class(leukemia_eset)
+# Extracting the expression matrix as I had difficulty renaming the row/feature/gene names
+expr.matr<-leukemia_eset@assayData[["exprs"]]
+rownames(expr.matr)<-str_replace_all(rownames(expr.matr),"[^0-9.-]","")
+# Observing the result
+head(rownames(expr.matr))
+```
+
+Performing the GSVA with the obtained objects
+```{r}
+leukemia_es <- gsva(expr.matr, gene_sets[["geneIds"]],
+            min.sz=10, max.sz=500, verbose=TRUE)
+```
+
+
+```{r}
+if (!require(shinydashboard)) BiocManager::install("shinydashboard")
+if (!require(shinyjs)) BiocManager::install("shinyjs")
+if (!require(limma)) BiocManager::install("limma")
+library("shinydashboard")
+library("shinyjs")
+library("limma")
 ```
 
