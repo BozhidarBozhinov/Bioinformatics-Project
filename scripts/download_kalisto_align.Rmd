@@ -1,0 +1,144 @@
+Download Files from 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(knitr)
+library(purrr)
+library(here)
+library(stringr)
+```
+
+#Setting а location where prefetch will save downloaded files
+
+#```{r}
+system2("wsl","/opt/program/sratoolkit.2.9.0-ubuntu64/bin/fastq-dump")
+#```
+
+#```{bash engine.opts='-l'}
+# Makes sense to name the folder after the identifier of the dataset to be fetched
+cd /mnt/c/Users/Dancho/Documents/DataSets/RNASeq
+#mkdir GSE139929 - or directly create the folder manually and add the accession list as a txt
+cd GSE139929
+pwd
+vdb-config --prefetch-to-cwd
+# SINGLE END SEQUENCES
+prefetch --option-file SraAccList.txt #Accession list downloaded from SRA Run Selector
+
+#```
+
+Without prefetching - directlty downloading and converting files to fastq
+```{bash engine.opts='-l'}
+cat /mnt/c/Users/Dancho/Documents/DataSets/RNASeq/GSE203522/SRR_Acc_List-Copy.txt | xargs fasterq-dump -O /mnt/c/Users/Dancho/Documents/DataSets/RNASeq/GSE203522/
+```
+
+Aligning
+```{bash engine.opts='-l'}
+whereis kallisto
+```
+
+
+
+```{bash engine.opts='-l'}
+cd /usr/bin/kallisto
+ls
+
+```
+
+```{bash engine.opts='-l'}
+cd /usr/share/doc/kallisto
+mkdir indices
+cd indices
+mkdir hs
+cd hs
+```
+
+```{bash engine.opts='-l'}
+cp /usr/bin/kallisto /mnt/c/Users/Dancho/Documents/kallisto
+```
+
+```{bash engine.opts='-l'}
+#Just to check how well the generated down below command works
+/mnt/c/Users/Dancho/Documents/kallisto/kallisto quant -i /mnt/c/Users/Dancho/Documents/kallisto/indices/hs/transcriptome.idx -t 10 -o /mnt/c/Users/Dancho/Documents/DataSets/RNASeq/GSE203522/SRR19346970 /mnt/c/Users/Dancho/Documents/DataSets/RNASeq/GSE203522/SRR19346970_1.fastq /mnt/c/Users/Dancho/Documents/DataSets/RNASeq/GSE203522/SRR19346970_2.fastq
+```
+
+```{r kallisto_alignment_GSE136666}
+rm(list=ls())
+accession <- "GSE203522"
+datadir <- "C:/Users/Dancho/Documents/DataSets/RNASeq"
+datadir <- str_sub(datadir,start=4)
+datadir_lin <- paste0("/mnt/c/", datadir)
+directory_win <- here::here(paste0("C:/", datadir) ,accession)
+directory_lin <- here::here(paste0("/mnt/c/", datadir),accession)
+
+index_file <- "/mnt/c/Users/Dancho/Documents/kallisto/indices/hs/transcriptome.idx" 
+kallisto_bin <- "/mnt/c/Users/Dancho/Documents/kallisto/kallisto"
+extension_1 <- "_1.fastq"
+extension_2 <- "_2.fastq"
+
+workflow <- data.frame(FILES = dir(directory_win,
+                                   pattern = "fastq$",
+                                   recursive = TRUE,
+                                   full.names = TRUE)) %>%
+  
+  mutate(FILES=paste0("/mnt/c/", str_sub(FILES, start=4))) %>% 
+  
+  # second, 
+  mutate(SAMPLES = basename(FILES)) %>%
+  mutate(SAMPLES = str_replace_all(SAMPLES, c('_1.fastq'='','_2.fastq'=''))) %>%
+  group_by(SAMPLES) %>%
+  summarise(FILES = paste(FILES, collapse = " ")) %>%
+  mutate(OUTPUT = here::here(datadir_lin, accession, SAMPLES)) %>%
+  mutate(command = paste(kallisto_bin, "quant -i",
+                         index_file,
+                         "-t 8", #this indicates the number of processor cores
+                         #"--single ",
+                         #"-l 200",
+                         #"-s 20",
+                         "-o",
+                         OUTPUT, # dir of folder to include the result
+                         FILES)) # both forward and reverse read files: _1.fastq >> _2.fastq
+
+outputdir_win <- workflow$OUTPUT # Translating to windows format directories
+outputdir_win <- paste0("C:/", str_sub(outputdir_win, start=8))%>%
+  purrr::map(dir.create)
+
+systembash<-function(a){system2(command="wsl",args=a)}
+
+workflow$command %>%
+  purrr::map(systembash)
+```
+
+
+```{r construct_txi}
+library(rio)
+library(tximport)
+
+accession <- "GSE203522"
+datadir <- "C:/Users/Dancho/Documents/DataSets/RNASeq"
+directory <- here::here(datadir,accession)
+
+files <- dir(directory,
+             recursive = TRUE,
+             pattern = "h5$",
+             full.names = TRUE)
+
+names(files) <- files %>%
+  dirname %>%
+  basename
+
+tx2gene <- rio::import("C:/Users/Dancho/Documents/kallisto/indices/hs/transcripts_to_genes.txt",
+                       header = FALSE)
+
+
+
+txi <- tximport(files, type="kallisto", tx2gene=tx2gene)
+
+txi %>%
+  rio::export(here::here(datadir, paste0(accession, "_txi.RDS")))
+
+```
+
+
+```
+
+

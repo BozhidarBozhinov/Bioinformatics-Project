@@ -1,0 +1,99 @@
+This script is a modification of a version, provided by Dr. Thomas Mohr
+Creating a DDS file (experiment design-specific) from a txi file
+
+```{r construct_txi}
+rm(list=ls())
+library(DESeq2)
+library(org.Hs.eg.db)
+library(tidyverse)
+library(rio)
+library(tximport)
+
+accession <- "GSE65634"
+datadir <- "C:\\Users\\Dancho\\Documents\\DataSets\\RNASeq"
+
+directory <- here::here(datadir,accession)
+annot <- rio::import(here::here(directory,"SraRunTable (2).txt"))
+#Identifying Run names of only samples, representing cell lines C1 and C2 from healhy controls
+selected_samples<-annot %>% filter(cell_line %in% c("C1","C2")) %>% filter(agent %in% c("DMSO","resveratrol")) %>% .$Run 
+
+
+files <- dir(directory,
+             recursive = TRUE,
+             pattern = "h5$",
+             full.names = TRUE)
+
+names(files) <- files %>%
+  dirname %>%
+  basename
+#Selecting to include only the preselected samples
+files <- files[selected_samples]
+#
+tx2gene <- rio::import("C:/Users/Dancho/Documents/kallisto/indices/hs/transcripts_to_genes.txt",
+                       header = FALSE)
+
+
+
+txi <- tximport(files, type="kallisto", tx2gene=tx2gene)
+
+txi %>%
+  rio::export(here::here(datadir, paste0(accession, "_txi.RDS")))
+
+```
+
+Loading previously-created txi file
+```{r create_dds}
+
+txi <- rio::import(here::here(datadir, paste0(accession, "_txi.RDS")))
+```
+
+Loading and reorganising ColData - information about the samples and experimental conditions
+```{r create_dds}
+# Adding the metadata for the samples - if it doesn't contain the sample names, visible at txi$counts, the next step is necessary
+
+#Excluding unnecessary data
+annot<-annot[which(annot$Run %in% selected_samples),] #%>% dplyr::select(Run, agent, cell_line) %>% remove_rownames() %>% column_to_rownames(var="Run")
+#select and reorder the sample_annotation file as in the txi (from where counts is extracted)
+colData <- annot %>% 
+  DataFrame # This is a function of the packages DESeq2
+```
+
+Loading and reorganising RowData - data about the features-Genes
+```{r create_dds}
+rowData <- AnnotationDbi::select(org.Hs.eg.db,
+                                 columns = c("ENSEMBL", "ENTREZID", "SYMBOL", "GENENAME", "UNIPROT"),
+                                 keys = keys(org.Hs.eg.db, keytype = "ENSEMBL"),
+                                 keytype = "ENSEMBL") %>%
+  group_by(ENSEMBL) %>% #Eliminating duplicating values by the next two rows
+  summarize_all(function(x){paste(unique(x), collapse = ", ")}) %>%
+  mutate(rowname = ENSEMBL) %>%
+  column_to_rownames()
+
+rownames(txi$counts) <- str_sub(rownames(txi$counts), 1, 15)
+rownames(txi$abundance) <- str_sub(rownames(txi$abundance), 1, 15)
+rownames(txi$length) <- str_sub(rownames(txi$length), 1, 15)# 1 to N is the length of ens gene ids
+selected_features <- intersect(rownames(txi$counts), rownames(rowData))
+
+txi$counts <- txi$counts[selected_features,selected_samples]
+txi$abundance <- txi$abundance[selected_features,selected_samples]
+txi$length <- txi$length[selected_features,selected_samples]
+
+rowData <- rowData[selected_features,]
+```
+
+Mixing all the info in the DDS object
+```{r create_dds}
+ddsTxi <- DESeqDataSetFromTximport(txi,
+                                 colData = colData,
+                                 rowData = rowData,
+                                 design = ~ cell_line + agent)
+# Discarding gene transcripts with low count values
+keep <- rowSums(counts(ddsTxi)) >= 10
+dds <- ddsTxi[keep,]
+# Creating the second tier dds format file for further analyses
+dds <- dds %>%
+  DESeq()
+# Saving the file
+dds %>%
+ rio::export(here::here(datadir, paste0(accession, "_dds.RDS")))
+```

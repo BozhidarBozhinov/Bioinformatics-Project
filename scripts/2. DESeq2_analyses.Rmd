@@ -1,0 +1,114 @@
+Further analyses of the dds file, created by the txi file
+To be noted that prioritizing a different experimental design needs a separate dds file creation for further analysis
+Following the DESeq2 vignette:
+
+```{r DEGs}
+rm(list=ls())
+library(rio)
+library(here)
+library(apeglm)
+library(DESeq2)
+
+accession <- "GSE65634"
+datadir <- "C:\\Users\\Dancho\\Documents\\DataSets\\RNASeq"
+
+dds<-rio::import(here::here(datadir,paste0(accession, "_dds.RDS")))
+
+resultsNames(dds) # lists the coefficients - design factor and values
+#Setting the factor levels
+dds$condition <- relevel(dds$agent, ref = "DMSO")
+#Shrinkage to Log2 fold changes
+#  First find what are the coef
+resultsNames(dds)
+#Then add the factor of interest in the lfcShrink function
+resLFC <- lfcShrink(dds, coef="agent_resveratrol_vs_DMSO", type="apeglm")
+```
+Annotating results file with gene symbols
+The gene symbol and gene names were added when creating the deseq2 object, but if they weren't, they could be added at this point by using other sources, for example library("org.Hs.eg.db")
+```{r}
+
+# creating a results object by extracting the results from the dds file
+res <- results(dds, tidy=TRUE)
+summary(res)
+
+# creating an annotation file by extracting info from the dds object
+anno<-data.frame(row=dds@rowRanges@elementMetadata@listData[["ENSEMBL"]],
+                 symbol=dds@rowRanges@elementMetadata@listData[["SYMBOL"]],
+                 genename=dds@rowRanges@elementMetadata@listData[["GENENAME"]])
+
+#Check if matching
+all(res$row==dds@rowRanges@elementMetadata@listData[["ENSEMBL"]])
+
+#If TRUE, merge the tables 
+resAn <- merge(res, anno, all.x=TRUE)
+class(resAn)
+rm(anno)
+
+```
+
+One can take advantage of parallelized computation
+```{r}
+#library("BiocParallel")
+#register(MulticoreParam(4))
+```
+
+
+Differential expression analysis
+```{r}
+
+#We can order our annotated results table by the smallest p value:
+resOrdered <- resAn[order(resAn$pvalue),]
+#How many adjusted p-values were less than 0.1?
+sum(resAn$padj < 0.1, na.rm=TRUE)
+# Provides the same result as above, but more detailed
+res01 <- results(dds, alpha=0.1) 
+summary(res01)
+#By default the argument alpha is set to 0.1. If the adjusted p value cutoff will be a value other than 0.1
+res005 <- results(dds, alpha=0.05)
+summary(res005)
+sum(res005$padj < 0.05, na.rm=TRUE)
+#
+#Example by Thomas
+resMFType <- results(dds,
+                    contrast=c("agent", "resveratrol", "DMSO"))
+head(resMFType[order(resMFType$pvalue),])
+```
+
+Exploring and exporting results
+```{r}
+#MA-plot
+plotMA(res, ylim=c(-2,2))
+#MA-plot for the shrunken log2 fold changes
+plotMA(resLFC, ylim=c(-2,2)) # something doesn't work fine here. probably creating the resLFC...
+#interactively detect the row number of individual genes by clicking on the plot
+idx <- identify(res$baseMean, res$log2FoldChange)
+rownames(resAn)[idx]
+# Other options
+```
+Plot counts
+```{r}
+# examine the counts of reads for a single gene across the groups
+plotCounts(dds, gene=which.min(res$padj), intgroup="agent")
+```
+Using ggplot
+```{r}
+d <- plotCounts(dds, gene=which.min(res$padj), intgroup=c( "cell_line", "agent"), 
+                returnData=TRUE) # I NEED TO UNDERSTAND THE IMPORTANCE OF THE ORDER OF INTGROUP!!!
+library("ggplot2")
+ggplot(d, aes(x=Treatment, y=count, color=Condition)) + 
+  geom_point(position=position_jitter(w=0.1,h=0)) + 
+  scale_y_log10(breaks=c(25,100,400))
+```
+Data quality assessment by sample clustering and visualization
+```{r}
+#Heatmap of the count matrix
+# this gives log2(n + 1)
+ntd <- normTransform(dds)
+library("pheatmap")
+select <- order(rowMeans(counts(dds,normalized=TRUE)),
+                decreasing=TRUE)[1:20]
+df <- as.data.frame(colData(dds)[,c("agent", "cell_line")])
+pheatmap(assay(ntd)[select,], cluster_rows=FALSE, show_rownames=FALSE,
+         cluster_cols=FALSE, annotation_col=df)
+```
+
